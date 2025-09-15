@@ -5,8 +5,18 @@
       @update:loading="isLoading = $event"
       @update:search="search = $event"
       @update:selectedPositions="selectedPositionsFromFilter = $event"
+      @update:dates="handleDatesUpdate"
     />
-    
+    <v-btn 
+      v-if="filteredItems.length"
+      color="success"
+      class="mt-4 ml-4"
+      @click="sendTelegramNotification"
+      :loading="isLoadingNotification"
+      style="margin: 0.75rem 0 !important;"
+    >
+      Отправить в Telegram
+    </v-btn>
     <!-- Таблица с данными по проектам -->
     <v-data-table
       v-show="processedData.length"
@@ -18,16 +28,18 @@
       <template v-slot:body.append>
         <tr class="font-weight-bold">
           <td>Итого по должностям</td>
-          <td 
+          <template 
             v-for="position in filteredPositions" 
             :key="position.name" 
             class="text-center"
           >
-            {{ positionTotals[position.name] || 0 }}
-          </td>
-          <td class="text-center">{{ allProjectsTotals.application }}</td>
-          <td class="text-center">{{ allProjectsTotals.exit }}</td>
-          <td class="text-center">{{ allProjectsTotals.total }}</td>
+            <!-- Итого заявки по должности -->
+            <td class="v-data-table__td v-data-table-column--align-center">{{ positionApplicationTotals[position.name] || 0 }}</td>
+            <!-- Итого выходы по должности -->
+            <td class="v-data-table__td v-data-table-column--align-center">{{ positionExitTotals[position.name] || 0 }}</td>
+          </template>
+          <td class="v-data-table__td v-data-table-column--align-center">{{ allProjectsTotals.application }}</td>
+          <td class="v-data-table__td v-data-table-column--align-center">{{ allProjectsTotals.exit }}</td>
         </tr>
       </template>
     </v-data-table>
@@ -49,7 +61,7 @@ const requestTypes = ref([])
 const isLoading = ref(false)
 const search = ref('')
 const leadsData = ref([])
-const selectedPositionsFromFilter = ref([]) // Выбранные должности из фильтра
+const selectedPositionsFromFilter = ref([])
 let chart = null
 
 const projects = ref([
@@ -111,34 +123,41 @@ const positions = ref([
 // Отфильтрованные должности на основе выбора в фильтре
 const filteredPositions = computed(() => {
   if (!selectedPositionsFromFilter.value || selectedPositionsFromFilter.value.length === 0) {
-    return positions.value; // Если ничего не выбрано, показываем все
+    return positions.value;
   }
   
   return positions.value.filter(position => {
-    // Проверяем, есть ли должность в выбранных фильтрах
     return selectedPositionsFromFilter.value.some(selected => 
       selected.includes(position.applicationId) || selected.includes(position.exitId)
     );
   });
 })
 
-// Заголовки таблицы (проекты как строки, только выбранные должности как столбцы)
+// Заголовки таблицы
 const headers = computed(() => {
   const headerArray = [
     { text: 'Проект', value: 'projectName', align: 'start', sortable: true }
   ];
   
-  // Добавляем заголовки только для выбранных должностей
+  // Добавляем заголовки для каждой выбранной должности (по два столбца: заявки и выходы)
   filteredPositions.value.forEach(position => {
-    headerArray.push({
-      title: position.name,
-      value: position.name,
-      align: 'center',
-      sortable: true
-    });
+    headerArray.push(
+      {
+        title: `${position.name} (Заявки)`,
+        value: `${position.name}_application`,
+        align: 'center',
+        sortable: true
+      },
+      {
+        title: `${position.name} (Выходы)`,
+        value: `${position.name}_exit`,
+        align: 'center',
+        sortable: true
+      }
+    );
   });
   
-  // Добавляем заголовки для заявки, выхода и итого по проекту
+  // Добавляем заголовки для итогов по проекту
   headerArray.push(
     {
       title: 'Заявка по проекту',
@@ -152,12 +171,6 @@ const headers = computed(() => {
       align: 'center',
       sortable: true
     },
-    {
-      title: 'Итого по проекту',
-      value: 'projectTotal',
-      align: 'center',
-      sortable: true
-    }
   );
   
   return headerArray;
@@ -182,7 +195,7 @@ const getProjectName = (projectId) => {
   return project ? project.name : `Проект ${projectId}`;
 }
 
-// Обработанные данные для таблицы (проекты как строки)
+// Обработанные данные для таблицы
 const processedData = computed(() => {
   if (!leadsData.value.length) return [];
   
@@ -190,7 +203,7 @@ const processedData = computed(() => {
   
   // Группируем данные по проектам
   leadsData.value.forEach(lead => {
-    const projectId = lead.ufCrm35_Project; // ID проекта из поля сделки
+    const projectId = lead.ufCrm35_Project;
     if (!projectId) return;
     
     if (!projectData[projectId]) {
@@ -200,24 +213,31 @@ const processedData = computed(() => {
         positions: {},
         applicationTotal: 0,
         exitTotal: 0,
-        projectTotal: 0
       };
     }
     
-    // Суммируем данные только по выбранным должностям для этого проекта
+    // Суммируем данные по выбранным должностям для этого проекта
     filteredPositions.value.forEach(position => {
       const applicationValue = getNumericValue(lead, position.applicationId);
       const exitValue = getNumericValue(lead, position.exitId);
-      const totalValue = applicationValue + exitValue;
       
+      // Инициализируем объект для должности, если его нет
       if (!projectData[projectId].positions[position.name]) {
-        projectData[projectId].positions[position.name] = 0;
+        projectData[projectId].positions[position.name] = {
+          application: 0,
+          exit: 0,
+          total: 0
+        };
       }
       
-      projectData[projectId].positions[position.name] += totalValue;
+      // Добавляем значения заявок и выходов
+      projectData[projectId].positions[position.name].application += applicationValue;
+      projectData[projectId].positions[position.name].exit += exitValue;
+      projectData[projectId].positions[position.name].total += (applicationValue + exitValue);
+      
+      // Добавляем к общим итогам проекта
       projectData[projectId].applicationTotal += applicationValue;
       projectData[projectId].exitTotal += exitValue;
-      projectData[projectId].projectTotal += totalValue;
     });
   });
   
@@ -227,12 +247,13 @@ const processedData = computed(() => {
       projectName: project.projectName,
       applicationTotal: project.applicationTotal,
       exitTotal: project.exitTotal,
-      projectTotal: project.projectTotal
     };
     
-    // Добавляем данные только по выбранным должностям
+    // Добавляем данные по заявкам и выходам для каждой выбранной должности
     filteredPositions.value.forEach(position => {
-      rowData[position.name] = project.positions[position.name] || 0;
+      const positionData = project.positions[position.name] || { application: 0, exit: 0, total: 0 };
+      rowData[`${position.name}_application`] = positionData.application;
+      rowData[`${position.name}_exit`] = positionData.exit;
     });
     
     return rowData;
@@ -247,14 +268,16 @@ const filteredItems = computed(() => {
   
   const searchTerm = search.value.toLowerCase();
   return processedData.value.filter(item => {
-    // Поиск по названию проекта
     if (item.projectName.toLowerCase().includes(searchTerm)) {
       return true;
     }
     
-    // Поиск по значениям в выбранных должностях
+    // Поиск по значениям заявок и выходов
     for (const position of filteredPositions.value) {
-      if (String(item[position.name] || '').toLowerCase().includes(searchTerm)) {
+      if (
+        String(item[`${position.name}_application`] || '').toLowerCase().includes(searchTerm) ||
+        String(item[`${position.name}_exit`] || '').toLowerCase().includes(searchTerm)
+      ) {
         return true;
       }
     }
@@ -262,8 +285,7 @@ const filteredItems = computed(() => {
     // Поиск по итоговым значениям проекта
     if (
       String(item.applicationTotal).toLowerCase().includes(searchTerm) ||
-      String(item.exitTotal).toLowerCase().includes(searchTerm) ||
-      String(item.projectTotal).toLowerCase().includes(searchTerm)
+      String(item.exitTotal).toLowerCase().includes(searchTerm)
     ) {
       return true;
     }
@@ -272,33 +294,47 @@ const filteredItems = computed(() => {
   });
 })
 
-// Итоги по каждой выбранной должности (для строки итогов)
-const positionTotals = computed(() => {
+// Итоги по заявкам для каждой выбранной должности
+const positionApplicationTotals = computed(() => {
   const totals = {};
   
-  // Инициализируем итоги для каждой выбранной должности
   filteredPositions.value.forEach(position => {
     totals[position.name] = 0;
   });
   
-  // Суммируем данные по всем проектам (учитывая фильтрацию)
   filteredItems.value.forEach(project => {
     filteredPositions.value.forEach(position => {
-      totals[position.name] += project[position.name] || 0;
+      totals[position.name] += project[`${position.name}_application`] || 0;
     });
   });
   
   return totals;
 })
 
-// Общие итоги по всем проектам (учитывая фильтрацию)
+// Итоги по выходам для каждой выбранной должности
+const positionExitTotals = computed(() => {
+  const totals = {};
+  
+  filteredPositions.value.forEach(position => {
+    totals[position.name] = 0;
+  });
+  
+  filteredItems.value.forEach(project => {
+    filteredPositions.value.forEach(position => {
+      totals[position.name] += project[`${position.name}_exit`] || 0;
+    });
+  });
+  
+  return totals;
+})
+
+// Общие итоги по всем проектам
 const allProjectsTotals = computed(() => {
   const totals = { application: 0, exit: 0, total: 0 };
   
   filteredItems.value.forEach(project => {
     totals.application += project.applicationTotal || 0;
     totals.exit += project.exitTotal || 0;
-    totals.total += project.projectTotal || 0;
   });
   
   return totals;
@@ -309,7 +345,6 @@ const chartData = computed(() => {
   return {
     application: allProjectsTotals.value.application,
     exit: allProjectsTotals.value.exit,
-    total: allProjectsTotals.value.total
   };
 })
 
@@ -385,6 +420,92 @@ const createChart = () => {
     }]
   });
 }
+const isLoadingNotification = ref(false)
+const currentDates = ref([null, null]) // Храним текущие даты из фильтра
+const handleDatesUpdate = (dates) => {
+  currentDates.value = dates
+  console.log('Получены даты:', dates)
+}
+// Функция для форматирования даты
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ru-RU');
+};
+
+// Функция для получения заголовка с датами
+const getDateTitle = () => {
+  const [startDate, endDate] = currentDates.value;
+  
+  if (startDate && endDate) {
+    return `Выход персонала на проекты за период: ${startDate} - ${endDate}`;
+  } else if (startDate) {
+    return `Выход персонала на проекты на дату: ${startDate}`;
+  } else {
+    return 'Выход персонала на проекты';
+  }
+};
+
+// Функция для отправки уведомления в Telegram
+const sendTelegramNotification = async () => {
+  isLoadingNotification.value = true;
+  
+  try {
+    // Формируем текст сообщения
+    const message = formatTelegramMessage();
+    
+    // Настройки бота (замените на свои)
+    const botToken = '7535274591:AAGpwGKwMkL8T3qJu508JwwJoFWrnDyNPOQ'; // Токен вашего бота
+    const chatId = '-1002838872741'; // ID чата для отправки
+    
+    // Отправляем сообщение через Telegram Bot API
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML'
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.ok) {
+      console.log('Сообщение успешно отправлено в Telegram');
+      // Можно добавить уведомление об успешной отправке
+    } else {
+      console.error('Ошибка отправки в Telegram:', result);
+    }
+  } catch (error) {
+    console.error('Ошибка при отправке в Telegram:', error);
+  } finally {
+    isLoadingNotification.value = false;
+  }
+};
+
+// Функция для форматирования сообщения для Telegram
+const formatTelegramMessage = () => {
+  const currentDate = new Date().toLocaleDateString('ru-RU');
+  
+  let message = `<b>${getDateTitle()}:</b>\n\n`;
+  // Добавляем данные по каждому проекту
+  filteredItems.value.forEach(project => {
+    message += `<b>${project.projectName}</b>\n`;
+    message += `Заявка клиента: ${project.applicationTotal}\n`;
+    message += `Выход суточный: ${project.exitTotal}\n\n`;
+  });
+  
+  // Добавляем итоговые значения
+  message += `<b>ИТОГО</b>\n`;
+  message += `Заявка клиентов: ${allProjectsTotals.value.application}\n`;
+  message += `Выход суточный: ${allProjectsTotals.value.exit}`;
+  
+  return message;
+};
 
 // Следим за изменениями данных для обновления графика
 watch(chartData, (newData) => {
@@ -402,7 +523,6 @@ watch(search, () => {
 
 // Следим за изменениями выбранных должностей
 watch(selectedPositionsFromFilter, () => {
-  // При изменении фильтра должностей пересчитываем данные
   if (chartData.value.application > 0 || chartData.value.exit > 0) {
     createChart();
   }
@@ -425,5 +545,14 @@ onUnmounted(() => {
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Стили для лучшего отображения раздельных столбцов */
+.v-data-table :deep(td) {
+  padding: 8px 4px;
+}
+
+.v-data-table :deep(.text-center) {
+  text-align: center;
 }
 </style>

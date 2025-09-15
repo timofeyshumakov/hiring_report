@@ -32,6 +32,7 @@ import { ref, defineEmits, defineProps, watch } from 'vue'
 import { callApi } from '../../functions/callApi.ts'
 import ErrorLog from './ErrorLog.vue'
 import Filtres from './Filtres.vue'
+import moment from 'moment'
 
 const props = defineProps({
   monthNames: {
@@ -68,7 +69,7 @@ const currentFilters = ref({})
 const search = ref('');
 
 // Добавляем emit для выбранных должностей
-const emit = defineEmits(['update:search', 'updateData', 'update:loading', 'update:selectedPositions'])
+const emit = defineEmits(['update:search', 'updateData', 'update:loading', 'update:selectedPositions', 'update:dates'])
 
 watch(search, (newSearch) => {
   emit('update:search', newSearch)
@@ -130,9 +131,9 @@ const submit = async () => {
       selectFields,
       1044
     )
-
+    emit('update:dates', [moment(filters[">ufCrm35_Day"]).format('DD.MM.YYYY'), moment(filters["<ufCrm35_Day"]).format('DD.MM.YYYY')]);
     // Передаем данные напрямую родителю
-    emit('updateData', leads)
+    emit('updateData', leads);
     
   } catch (error) {
     console.error('Ошибка при получении данных:', error)
