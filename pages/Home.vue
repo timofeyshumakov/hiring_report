@@ -117,7 +117,17 @@ const positions = ref([
     name: 'Уборщик', 
     applicationId: 'ufCrm35_1757591974', 
     exitId: 'ufCrm35_1757592112' 
-  }
+  },
+  { 
+    name: 'Пильщик', 
+    applicationId: 'ufCrm35_1759007256', 
+    exitId: 'ufCrm35_1759007284' 
+  },
+  { 
+    name: 'Оператор', 
+    applicationId: 'ufCrm35_1759007295', 
+    exitId: 'ufCrm35_1759007307' 
+  },
 ])
 
 // Отфильтрованные должности на основе выбора в фильтре

@@ -138,6 +138,19 @@ const positions = ref([
     applicationId: 'ufCrm35_1757591974', 
     exitId: 'ufCrm35_1757592112' 
   }
+  ,
+  { 
+    id: 'ufCrm35_1759007256_ufCrm35_1759007284',
+    name: 'Пильщик', 
+    applicationId: 'ufCrm35_1759007256', 
+    exitId: 'ufCrm35_1759007284' 
+  },
+  { 
+    id: 'ufCrm35_1759007295_ufCrm35_1759007307',
+    name: 'Оператор', 
+    applicationId: 'ufCrm35_1759007295', 
+    exitId: 'ufCrm35_1759007307' 
+  }
 ])
 
 const responsibles = ref([
