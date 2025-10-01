@@ -85,12 +85,13 @@ const emitSelectedPositions = (selectedPositions) => {
 }
 
 const checkError = () => {
-  if (showInput.value[5] && !currentFilters.value.selectedDate) {
+  console.log(currentFilters.value);
+  if (showInput.value[5] && !currentFilters.value["<ufCrm35_Day"]) {
     dialogStages.value = true
     dialogMsg.value = 'Выберите дату'
     return true
   } else if (showInput.value[4]) {
-    if (!currentFilters.value.dateRange?.[0] || !currentFilters.value.dateRange?.[1]) {
+    if (!currentFilters.value[">ufCrm35_Day"] || !currentFilters.value["<ufCrm35_Day"]) {
       dialogStages.value = true
       dialogMsg.value = 'Выберите дату'
       return true
